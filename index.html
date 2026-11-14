@@ -215,6 +215,8 @@ const SECTIONS = [
   {t:'head', k:'吊掛'},
   {k:'吊掛類型', t:'multi', opts:['屋頂鋼構','馬道','預埋吊點','Ground support','地面堆疊']},
   {k:'吊掛高度上限 (m)', t:'text', ph:'例：18.5，或「馬道下緣約 20 m」'},
+  {k:'中心 Jumbotron', t:'chips', opts:['無','有']},
+  {k:'Jumbotron 底部高度 (m)', t:'text', when:['中心 Jumbotron','有'], ph:'例：22，或「收到頂約 28 m」'},
   {t:'head', k:'聲學'},
   {k:'RT60 (秒)', t:'number', step:'0.01', ph:'例：2.4（中頻 500 Hz–1 kHz）'},
   {k:'RT60 截圖', t:'photos', max:1, btn:'上傳 RT60 截圖', hint:'有量測截圖就直接上傳一張，不用填秒數。再上傳會換掉原本那張。'},
@@ -227,6 +229,9 @@ const SECTIONS = [
   {k:'FOH 位置', t:'chips', other:1, opts:['場地中央','偏一側','看台上','其他']},
   {k:'FOH 距舞台 (m)', t:'number', step:'0.1'},
   {k:'場地說明', t:'area', ph:'反射在哪、跟模擬差在哪、吊掛或進場要注意的事…'},
+  {t:'head', k:'上下樓'},
+  {k:'演出如何上下樓', t:'area', ph:'簡述路線，例：走舞台後方左側樓梯；貨梯到 B1'},
+  {k:'上下樓照片', t:'photos', max:3, btn:'加上下樓照片', hint:'最多 3 張，會自動壓縮。'},
  ]},
  {title:'問題與照片', fields:[
   {k:'遇到的問題與處理', t:'area', ph:'遇到什麼、怎麼解決'},
@@ -380,6 +385,7 @@ function buildForm(){
   ALL.forEach((f, i) => { if (f.suggest) attachSugg($('f_' + i + (f.opts ? '_o' : '')), f.k, !!f.opts); });
   venueEl().closest('.f').insertAdjacentHTML('afterend', '<div class="f vcount hide" id="vcount"></div>');
   venueEl().addEventListener('input', updateVenueCount);
+  updateWhen();
 }
 // 選項欄數：4 個以內排成一列（字長的排兩欄），更多就自動排三欄，避免最後一顆落單
 function chipCols(opts){
@@ -421,10 +427,19 @@ function onFormClick(e){
     });
   } else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was) b.classList.add('on'); }
   syncOther(box);
+  updateWhen();
   const o = $(box.id + '_o');
   if (o && b.dataset.v === '其他' && b.classList.contains('on')) o.focus();
   box.closest('.f').classList.remove('bad');
   saveDraft();
+}
+// when:[欄位, 值] 的欄位只有在那個選項被選到時才出現
+function whenOk(f){
+  const src = ALL.find(x => x.k === f.when[0]), el = $('f_' + ALL.indexOf(src));
+  return chipsValue(el).split('、').includes(f.when[1]);
+}
+function updateWhen(){
+  ALL.forEach(f => { if (f.when) document.querySelector(`.f[data-k="${CSS.escape(f.k)}"]`).classList.toggle('hide', !whenOk(f)); });
 }
 function syncOther(box){
   const o = $(box.id + '_o');
@@ -451,6 +466,7 @@ function getData(){
   ALL.forEach((f, i) => {
     const el = $('f_' + i);
     if (f.t === 'photos' || f.t === 'files' || f.t === 'head') return;
+    if (f.when && !whenOk(f)) return;
     if (f.t === 'chips' || f.t === 'multi') d[f.k] = chipsValue(el);
     else if (f.t === 'stars') d[f.k] = el.dataset.val || '';
     else d[f.k] = el.value.trim();
@@ -465,6 +481,7 @@ function setData(d){
     else if (f.t === 'stars') setStars(el, v);
     else el.value = v;
   });
+  updateWhen();
   updateVenueCount();
 }
 function showStep(){
