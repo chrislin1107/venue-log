@@ -124,6 +124,14 @@ dl{margin:0} dt{font-size:12px;color:var(--sub);margin-top:12px} dd{margin:2px 0
 .back{background:none;border:0;font:inherit;color:var(--accent);padding:12px 0 4px;cursor:pointer}
 .zoom{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:20}
 .zoom img{max-width:100%;max-height:100%}
+.gal{display:flex;width:100%;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior:contain}
+.gal::-webkit-scrollbar{display:none}
+.gal>div{flex:0 0 100%;height:100%;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;scroll-snap-stop:always}
+.zc{position:absolute;top:calc(16px + env(safe-area-inset-top));left:0;right:0;text-align:center;color:#fff;font-size:15px;pointer-events:none}
+.zb{position:absolute;width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:26px;line-height:44px;padding:0;cursor:pointer}
+.zx{top:calc(8px + env(safe-area-inset-top));right:10px}
+.zp,.zn{top:50%;transform:translateY(-50%)} .zp{left:10px} .zn{right:10px}
+@media (hover:none){.zp,.zn{display:none}}
 .hide{display:none!important}
 </style>
 </head>
@@ -193,7 +201,8 @@ dl{margin:0} dt{font-size:12px;color:var(--sub);margin-top:12px} dd{margin:2px 0
     <button class="btn" style="width:100%;margin-top:10px" onclick="$('sheet').style.display='none'">關閉</button>
   </div>
 </div>
-<div class="zoom" id="zoom" onclick="this.style.display='none'"><img id="zoomImg" alt=""></div>
+<div class="zoom" id="zoom" onclick="closeZoom()"><div class="gal" id="gal"></div><div class="zc" id="zc"></div>
+  <button type="button" class="zb zx" aria-label="關閉">×</button><button type="button" class="zb zp" id="zp" aria-label="上一張" onclick="event.stopPropagation();galGo(-1)">‹</button><button type="button" class="zb zn" id="zn" aria-label="下一張" onclick="event.stopPropagation();galGo(1)">›</button></div>
 
 
 <script>
@@ -219,7 +228,7 @@ const SECTIONS = [
   {k:'Jumbotron 底部離地高度 (m)', t:'text', when:['中心 Jumbotron','有'], ph:'例：22，或「收到頂約 28 m」'},
   {t:'head', k:'聲學'},
   {k:'RT60 (秒)', t:'text', ph:'例：2.4（中頻 500 Hz–1 kHz）'},
-  {k:'RT60 截圖', t:'photos', max:1, btn:'上傳 RT60 截圖', hint:'有量測截圖就直接上傳一張，不用填秒數。再上傳會換掉原本那張。'},
+  {k:'RT60 截圖', t:'photos', max:1, big:1, btn:'上傳 RT60 截圖', hint:'有量測截圖就直接上傳一張，不用填秒數。再上傳會換掉原本那張。'},
   {k:'RT60 來源', t:'chips', opts:['實測','場館資料','估計']},
   {k:'高頻殘響', t:'chips', opts:['短','適中','偏長','很長']},
   {k:'低頻殘響', t:'chips', opts:['短','適中','偏長','很長']},
@@ -231,7 +240,7 @@ const SECTIONS = [
   {k:'場地說明', t:'area', ph:'反射在哪、跟模擬差在哪、吊掛或進場要注意的事…'},
   {t:'head', k:'上下樓'},
   {k:'演出如何上下樓', t:'area', ph:'簡述路線，例：走舞台後方左側樓梯；貨梯到 B1'},
-  {k:'上下樓提示照片', label:'提示照片', t:'photos', max:3, btn:'加提示照片', hint:'拍樓梯入口、轉角、貨梯位置這類找路用的照片。最多 3 張，會自動壓縮。'},
+  {k:'上下樓提示照片', t:'photos', max:3, note:'演出如何上下樓', btn:'加上下樓提示照片', hint:'拍樓梯入口、轉角、貨梯位置這類找路用的照片。最多 3 張，會自動壓縮。'},
  ]},
  {title:'問題與照片', fields:[
   {k:'遇到的問題與處理', t:'area', ph:'遇到什麼、怎麼解決'},
@@ -588,7 +597,7 @@ function shrink(file){
 }
 function renderPhotos(pi){
   if (pi == null) return PHOTO_FIELDS.forEach((_, i) => renderPhotos(i));
-  $('ph_' + pi).innerHTML = (photoSets[pi] || []).map((p, i) => `<div>${p.url ? `<img src="${p.url}" onclick="zoom(this.src)" alt="">` : ''}<b onclick="photoSets[${pi}].splice(${i},1);renderPhotos(${pi})">×</b></div>`).join('');
+  $('ph_' + pi).innerHTML = (photoSets[pi] || []).map((p, i) => `<div>${p.url ? `<img src="${p.url}" onclick="zoom(this)" alt="">` : ''}<b onclick="photoSets[${pi}].splice(${i},1);renderPhotos(${pi})">×</b></div>`).join('');
 }
 
 /* 附加檔案：直接上傳（每個 30 MB 內），太大的請貼連結 */
@@ -639,7 +648,7 @@ async function exportPdf(r){
         if (!u && code()) { try { u = await call('getPhoto', code(), id); photoCache[id] = u; } catch (e) {} }
         if (u) urls.push(u);
       }
-      if (urls.length) groups.push({title: f.label || f.k, urls});
+      if (urls.length) groups.push({title: f.label || f.k, urls, big: !!f.big, note: f.note ? r[f.note] || '' : ''});
     }
     const html = reportHtml(r, groups);
     const name = `${r['場館'] || '場地'}_${r['演出日期'] || ''}_場館筆記.pdf`.replace(/[\\/:*?"<>|]/g, '_');
@@ -661,17 +670,20 @@ function showSheet(inner){
 }
 function reportHtml(r, groups){
   const logo = document.querySelector('.brand .l-dark').src;
+  // 有照片的話，照片欄的文字說明（note）放到照片下面，表格裡就不重複
+  const moved = new Set(PHOTO_FIELDS.filter(f => f.note && groups.some(g => g.title === (f.label || f.k))).map(f => f.note));
   const secs = SECTIONS.map(s => {
-    const rows = s.fields.filter(f => f.t !== 'photos' && f.t !== 'files' && f.t !== 'head' && r[f.k]).map(f =>
+    const rows = s.fields.filter(f => f.t !== 'photos' && f.t !== 'files' && f.t !== 'head' && r[f.k] && !moved.has(f.k)).map(f =>
       `<tr><td class="k">${esc(f.label || f.k)}</td><td class="v">${f.t === 'stars' ? '★'.repeat(+r[f.k]) + '☆'.repeat(5 - r[f.k]) : esc(r[f.k])}</td></tr>`).join('');
     return rows ? `<h2>${esc(s.title)}</h2><table>${rows}</table>` : '';
   }).join('');
   const ph = groups.map(g => {
     let rows = '';
-    for (let i = 0; i < g.urls.length; i += 2) {
+    if (g.big) rows = g.urls.map(u => `<tr><td colspan="2"><img src="${u}" width="680"></td></tr>`).join('');   // 截圖放大到整頁寬
+    else for (let i = 0; i < g.urls.length; i += 2) {
       rows += `<tr>${[g.urls[i], g.urls[i + 1]].map(u => `<td>${u ? `<img src="${u}" width="330">` : ''}</td>`).join('')}</tr>`;
     }
-    return `<div class="keep"><h2>${esc(g.title)}</h2><table class="ph">${rows}</table></div>`;
+    return `<div class="keep"><h2>${esc(g.title)}</h2><table class="ph">${rows}</table>${g.note ? `<p class="note">${esc(g.note)}</p>` : ''}</div>`;
   }).join('');
   const att = FILE_FIELDS.map(f => { const fs = parseFiles(r[f.k]); return fs.length ? `<h2>${esc(f.k)}</h2><table>${fs.map(x => `<tr><td class="v">${esc(x.n)}</td></tr>`).join('')}</table>` : ''; }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(r['場館'])}</title><style>
@@ -685,6 +697,7 @@ function reportHtml(r, groups){
     td{padding:5px 6px;vertical-align:top;border-bottom:1px solid #e5e5e5}
     td.k{width:28%;color:#666;font-size:10pt} td.v{white-space:pre-wrap}
     table.ph td{border:0;padding:4px;width:50%} table.ph img{width:100%;height:auto}
+    .note{margin:4px 4px 0;white-space:pre-wrap}
     .foot{margin-top:20px;color:#888;font-size:9pt}
   </style></head><body>
     <div class="top"><img src="${logo}" alt="AcoustiX"><span>場館筆記</span></div>
@@ -786,7 +799,7 @@ async function openRecord(id){
       <button class="btn pri" onclick="startEdit()">修改這筆紀錄</button>
     </div>`;
   dv.querySelectorAll('[data-p]').forEach(async el => {
-    try { const url = photoCache[el.dataset.p] || await call('getPhoto', code(), el.dataset.p); if (url) photoCache[el.dataset.p] = url; if (url) el.innerHTML = `<img src="${url}" onclick="zoom(this.src)" alt="">`; } catch (e) {}
+    try { const url = photoCache[el.dataset.p] || await call('getPhoto', code(), el.dataset.p); if (url) photoCache[el.dataset.p] = url; if (url) el.innerHTML = `<img src="${url}" onclick="zoom(this)" alt="">`; } catch (e) {}
   });
 }
 function backToList(){ $('detailView').classList.add('hide'); openSearch(); }
@@ -822,7 +835,25 @@ function startEdit(){
   step = 0; showTab('form');
 }
 function cancelEdit(){ $('editBanner').classList.add('hide'); clearForm(); showTab('search'); }
-function zoom(src){ $('zoomImg').src = src; $('zoom').style.display = 'flex'; }
+// 點照片放大；同一組的照片可以左右滑（電腦用左右鍵或兩側按鈕）
+function zoom(img){
+  const box = img.closest('.photos'), urls = box ? [...box.querySelectorAll('img')].map(i => i.src) : [img.src];
+  const gal = $('gal');
+  gal.innerHTML = urls.map(u => `<div><img src="${u}" alt=""></div>`).join('');
+  $('zoom').style.display = 'flex';
+  gal.scrollLeft = Math.max(0, urls.indexOf(img.src)) * gal.clientWidth;
+  galCount();
+  $('zp').style.visibility = $('zn').style.visibility = urls.length > 1 ? '' : 'hidden';
+}
+function galIdx(){ const g = $('gal'); return Math.round(g.scrollLeft / (g.clientWidth || 1)); }
+function galCount(){ const n = $('gal').children.length; $('zc').textContent = n > 1 ? `${galIdx() + 1} / ${n}` : ''; }
+function galGo(d){ const g = $('gal'); g.scrollTo({left: (galIdx() + d) * g.clientWidth, behavior: 'smooth'}); }
+function closeZoom(){ $('zoom').style.display = 'none'; $('gal').innerHTML = ''; }
+$('gal').addEventListener('scroll', galCount, {passive: true});
+document.addEventListener('keydown', e => {
+  if ($('zoom').style.display !== 'flex') return;
+  if (e.key === 'ArrowLeft') galGo(-1); else if (e.key === 'ArrowRight') galGo(1); else if (e.key === 'Escape') closeZoom();
+});
 
 let toastT;
 function toast(m){
