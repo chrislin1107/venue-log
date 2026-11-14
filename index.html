@@ -526,11 +526,13 @@ async function submit(){
   const btn = $('nextBtn'); btn.disabled = true;
   try {
     const d = getData();
-    const fresh = Object.values(photoSets).flat().filter(p => !p.id).length; let n = 0, ids = [];
+    // 照片同時傳 3 張（解析度不變）；失敗的話已傳好的會留著，再按一次只補沒傳的
+    const todo = PHOTO_FIELDS.flatMap((f, pi) => (photoSets[pi] || []).filter(p => !p.id)); let n = 0, ids = [];
+    if (todo.length) btn.textContent = `上傳照片 0/${todo.length}…`;
+    await pool(todo, 3, async p => { p.id = await call('uploadPhoto', p.b64, 'photo'); delete p.b64; btn.textContent = `上傳照片 ${++n}/${todo.length}…`; });
     for (const [pi, f] of PHOTO_FIELDS.entries()) {
       const got = [];
       for (const p of photoSets[pi] || []) {
-        if (!p.id) { btn.textContent = `上傳照片 ${++n}/${fresh}…`; p.id = await call('uploadPhoto', p.b64, 'photo'); delete p.b64; }
         if (p.url) photoCache[p.id] = p.url;
         got.push(p.id);
       }
@@ -640,14 +642,15 @@ async function exportPdf(r){
   if (!r) return;
   showSheet('<p class="muted">正在產生 PDF…</p>');
   try {
+    // 還沒載入的照片同時抓 4 張
+    const need = PHOTO_FIELDS.flatMap(f => splitIds(r[f.k])).filter(id => !photoCache[id]);
+    if (need.length && code()) { let n = 0;
+      await pool(need, 4, async id => { try { photoCache[id] = await call('getPhoto', code(), id); } catch (e) {}
+        showSheet(`<p class="muted">正在抓照片 ${++n}/${need.length}…</p>`); });
+      showSheet('<p class="muted">正在產生 PDF…</p>'); }
     const groups = [];
     for (const f of PHOTO_FIELDS) {
-      const urls = [];
-      for (const id of splitIds(r[f.k])) {
-        let u = photoCache[id];
-        if (!u && code()) { try { u = await call('getPhoto', code(), id); photoCache[id] = u; } catch (e) {} }
-        if (u) urls.push(u);
-      }
+      const urls = splitIds(r[f.k]).map(id => photoCache[id]).filter(Boolean);
       if (urls.length) groups.push({title: f.label || f.k, urls, big: !!f.big, note: f.note ? r[f.note] || '' : ''});
     }
     const html = reportHtml(r, groups);
@@ -664,6 +667,14 @@ async function exportPdf(r){
     showSheet(`<h2 style="margin-top:0">PDF 做好了</h2><p class="muted">${esc(name)}</p>
       <a class="btn pri" style="display:block;text-align:center;text-decoration:none" href="${url}" download="${esc(name)}" target="_blank">下載 PDF</a>`);
   } catch (e) { showSheet(`<p class="msg">${esc(e.message)}</p>`); }
+}
+// 同時最多跑 limit 個；全部跑完才回報第一個錯誤
+async function pool(items, limit, fn){
+  let i = 0, err = null;
+  await Promise.all(Array.from({length: Math.min(limit, items.length)}, async () => {
+    while (i < items.length) { const it = items[i++]; try { await fn(it); } catch (e) { err = err || e; } }
+  }));
+  if (err) throw err;
 }
 function showSheet(inner){
   $('sheetBody').innerHTML = inner; $('sheet').style.display = 'flex';
