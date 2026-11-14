@@ -45,6 +45,8 @@ h2{font-size:22px;margin:4px 0 14px;letter-spacing:.02em}
 .filelist div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;font-size:14px;word-break:break-all}
 .filelist small{color:var(--sub);margin-left:6px}
 .filelist b{cursor:pointer;color:var(--sub);white-space:nowrap}
+.tips{font-size:13px;color:var(--sub);margin:-2px 0 10px;line-height:2}
+.tips span{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 10px;margin:0 6px 0 0;color:var(--ink);line-height:26px}
 .note{padding:10px 0;border-bottom:1px solid var(--line)} .note:last-child{border-bottom:0}
 .note .m{font-size:12px;color:var(--sub);margin-bottom:2px}
 .f.sub{font-size:13px;font-weight:700;color:var(--sub);letter-spacing:.1em;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}
@@ -180,6 +182,7 @@ const SECTIONS = [
   {suggest:1, k:'城市', t:'text', req:1, half:1, ph:'例：武漢'},
   {suggest:1, k:'場館', t:'text', req:1, half:1, ph:'例：光谷網球中心'},
   {suggest:1, k:'場館類型', t:'chips', other:1, opts:['體育館','體育場','劇院','Livehouse','戶外','其他']},
+  {k:'觀眾容量', t:'chips', opts:['3000 人以下','3000–1 萬人','1–2 萬人','2–4 萬人','4 萬人以上']},
   {suggest:1, k:'職位', t:'chips', other:1, opts:['系統工程師','FOH','Monitor','其他']},
   {suggest:1, k:'系統品牌', t:'chips', req:1, other:1, opts:['L-Acoustics','d&b','Meyer Sound','其他']},
   {suggest:1, k:'演出形式', t:'chips', other:1, opts:['單面台','四面台','其他']},
@@ -205,7 +208,9 @@ const SECTIONS = [
   {k:'遇到的問題與處理', t:'area', ph:'遇到什麼、怎麼解決'},
   {k:'下次要注意', t:'area', hint:'這欄最重要：下一組人來這個場館，最需要知道什麼？'},
   {k:'場地好做程度', t:'stars'},
-  {k:'照片', label:'場地照片', t:'photos', max:20, btn:'加場地照片', hint:'場館、吊點、FOH、反射面、Smaart 截圖都可以。最多 20 張，會自動壓縮。'},
+  {k:'照片', label:'場地照片', t:'photos', max:20, btn:'加場地照片',
+   tips:['從 FOH 看舞台','從舞台看觀眾席','吊點／屋頂結構','問題反射面','後環看台','Smaart 量測畫面'],
+   hint:'照上面的角度拍，之後比對同一個場館比較容易。最多 20 張，會自動壓縮。'},
   {k:'附加檔案', t:'files', max:5, maxMB:30, hint:'PDF、Excel、Smaart 匯出檔、壓縮檔都可以。每個 30 MB 以內，最多 5 個。'},
   {k:'檔案連結', t:'area', ph:'超過 30 MB 的檔案請貼雲端連結，記得開分享權限'},
  ]},
@@ -369,7 +374,8 @@ function fieldHtml(f){
     ctl = `<label class="addphoto">＋ ${esc(f.btn || '加照片')}<input type="file" accept="image/*"${f.max === 1 ? '' : ' multiple'} onchange="addPhotos(this,${pi})"></label><div class="photos" id="ph_${pi}"></div>`; }
   else if (f.t === 'files') { const fi = FILE_FIELDS.indexOf(f);
     ctl = `<label class="addphoto">＋ 加檔案<input type="file" multiple onchange="addFiles(this,${fi})"></label><div class="filelist" id="fl_${fi}"></div>`; }
-  return `<div class="f${f.half ? ' half' : ''}" data-k="${esc(f.k)}">${lab}${ctl}${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
+  const tips = f.tips ? `<div class="tips">建議拍：${f.tips.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : '';
+  return `<div class="f${f.half ? ' half' : ''}" data-k="${esc(f.k)}">${lab}${tips}${ctl}${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
 }
 function onFormClick(e){
   const b = e.target.closest('.chips button, .stars button');
