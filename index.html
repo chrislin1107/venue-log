@@ -654,7 +654,7 @@ function reportHtml(r, groups){
     for (let i = 0; i < g.urls.length; i += 2) {
       rows += `<tr>${[g.urls[i], g.urls[i + 1]].map(u => `<td>${u ? `<img src="${u}" width="330">` : ''}</td>`).join('')}</tr>`;
     }
-    return `<h2>${esc(g.title)}</h2><table class="ph">${rows}</table>`;
+    return `<div class="keep"><h2>${esc(g.title)}</h2><table class="ph">${rows}</table></div>`;
   }).join('');
   const att = FILE_FIELDS.map(f => { const fs = parseFiles(r[f.k]); return fs.length ? `<h2>${esc(f.k)}</h2><table>${fs.map(x => `<tr><td class="v">${esc(x.n)}</td></tr>`).join('')}</table>` : ''; }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(r['場館'])}</title><style>
@@ -662,7 +662,8 @@ function reportHtml(r, groups){
     .top{border-bottom:2px solid #151515;padding-bottom:8px}
     .top img{height:26px} .top span{float:right;color:#666;font-size:10pt;margin-top:6px}
     h1{font-size:20pt;margin:16px 0 2px} .meta{color:#666;font-size:10pt;margin:0}
-    h2{font-size:12pt;border-bottom:1px solid #bbb;padding-bottom:3px;margin:20px 0 4px}
+    h2{font-size:12pt;border-bottom:1px solid #bbb;padding-bottom:3px;margin:20px 0 4px;page-break-after:avoid;break-after:avoid}
+    .keep{page-break-inside:avoid;break-inside:avoid} tr{page-break-inside:avoid;break-inside:avoid}
     table{width:100%;border-collapse:collapse}
     td{padding:5px 6px;vertical-align:top;border-bottom:1px solid #e5e5e5}
     td.k{width:28%;color:#666;font-size:10pt} td.v{white-space:pre-wrap}
