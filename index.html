@@ -732,8 +732,8 @@ function renderList(){
     const vs = Object.entries(g).sort((a, b) => b[1].length - a[1].length || String(b[1][0]['演出日期']).localeCompare(String(a[1][0]['演出日期'])));
     $('count').textContent = `共 ${vs.length} 個場館`;
     $('list').innerHTML = vs.map(([v, rs]) => `<a class="item" data-venue="${esc(v)}">
-      <div class="v">${esc(v)}<span class="tag">${rs.length} 次</span></div>
-      <div class="m">${esc(rs[0]['城市'])} · 最近一次 ${esc(rs[0]['演出日期'])}</div></a>`).join('') || '<p class="muted">沒有符合的場館</p>';
+      <div class="v">${esc(v)}<span class="tag">${rs.length} 筆</span></div>
+      <div class="m">${esc(rs[0]['城市'])} · 最近一筆 ${esc(rs[0]['演出日期'])}</div></a>`).join('') || '<p class="muted">沒有符合的場館</p>';
     $('list').onclick = e => { const a = e.target.closest('[data-venue]'); if (a) openVenue(a.dataset.venue); };
     return;
   }
@@ -783,10 +783,10 @@ function openVenue(v){
   const dv = $('detailView'); dv.classList.remove('hide'); window.scrollTo(0, 0);
   dv.innerHTML = `<button class="back" onclick="venueOpen=null;backToList()">‹ 回場館列表</button>
     <h2 style="margin-bottom:2px">${esc(v)}</h2>
-    <p class="muted" style="margin:0 0 14px">${esc(rs[0] ? rs[0]['城市'] : '')} · 共 ${rs.length} 次紀錄${avg ? ` · 平均好做程度 ${avg} ★` : ''}</p>
+    <p class="muted" style="margin:0 0 14px">${esc(rs[0] ? rs[0]['城市'] : '')} · 共 ${rs.length} 筆紀錄${avg ? ` · 平均好做程度 ${avg} ★` : ''}</p>
     ${notes.length ? `<div class="card sec"><h3>歷次「下次要注意」</h3>${notes.map(r => `<div class="note">
       <div class="m">${esc(r['演出日期'])} · ${esc(r['藝人／專案'])} · ${esc(r['填寫人'])}</div><div>${esc(r['下次要注意'])}</div></div>`).join('')}</div>` : ''}
-    <h3 style="font-size:15px;margin:18px 0 8px">每次紀錄</h3>
+    <h3 style="font-size:15px;margin:18px 0 8px">各筆紀錄</h3>
     ${rs.map(r => `<a class="item" onclick="openRecord('${esc(r.ID)}')">
       <div class="v" style="font-size:16px">${esc(r['演出日期'])}<span class="tag">${esc(r['系統品牌'])}</span></div>
       <div class="m">${esc(r['藝人／專案'])} · ${esc(r['填寫人'])} 填寫</div></a>`).join('')}`;
