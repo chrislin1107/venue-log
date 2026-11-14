@@ -40,6 +40,9 @@ h2{font-size:22px;margin:4px 0 14px;letter-spacing:.02em}
 .sugg-box div{padding:11px 12px;cursor:pointer;border-bottom:1px solid var(--line)} .sugg-box div:last-child{border:0}
 .sugg-box small{color:var(--sub);margin-left:8px;font-size:12px}
 .vcount{margin-top:8px;font-size:13px;line-height:1.5;padding:9px 11px;border-radius:9px;background:var(--chip);border:1px solid var(--line)}
+.filelist div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;font-size:14px;word-break:break-all}
+.filelist small{color:var(--sub);margin-left:6px}
+.filelist b{cursor:pointer;color:var(--sub);white-space:nowrap}
 .note{padding:10px 0;border-bottom:1px solid var(--line)} .note:last-child{border-bottom:0}
 .note .m{font-size:12px;color:var(--sub);margin-bottom:2px}
 .f.sub{font-size:13px;font-weight:700;color:var(--sub);letter-spacing:.1em;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}
@@ -201,7 +204,8 @@ const SECTIONS = [
   {k:'下次要注意', t:'area', hint:'這欄最重要：下一組人來這個場館，最需要知道什麼？'},
   {k:'場地好做程度', t:'stars'},
   {k:'照片', label:'場地照片', t:'photos', max:20, btn:'加場地照片', hint:'場館、吊點、FOH、反射面、Smaart 截圖都可以。最多 20 張，會自動壓縮。'},
-  {k:'檔案連結', t:'area', ph:'Smaart 存檔、場館圖的雲端連結'},
+  {k:'附加檔案', t:'files', max:5, maxMB:30, hint:'PDF、Excel、Smaart 匯出檔、壓縮檔都可以。每個 30 MB 以內，最多 5 個。'},
+  {k:'檔案連結', t:'area', ph:'超過 30 MB 的檔案請貼雲端連結，記得開分享權限'},
  ]},
 ];
 
@@ -249,6 +253,8 @@ const MOCK = (() => {
     listRecords: c => auth(c) ? wait(db.map(r => ({...r, text:Object.values(r).join(' ')}))) : fail('授權碼不正確'),
     getRecord: (c, id) => auth(c) ? wait({...db.find(r => r.ID === id)}) : fail('授權碼不正確'),
     getPhoto: (c, id) => wait(photos[id] || ''),
+    uploadFile: (b64, n) => { const id = 'mockf' + Math.random().toString(36).slice(2, 12); photos[id] = {name: n, b64}; return wait(id); },
+    getFile: (c, id) => auth(c) ? wait({name: photos[id].name, b64: photos[id].b64}) : fail('授權碼不正確'),
     getSuggestions: () => { const values = {}, pairs = {};
       ['城市','場館','藝人／專案','場館類型','職位','系統品牌','演出形式'].forEach(k => values[k] = [...new Set(db.map(r => r[k]).filter(Boolean))]);
       const counts = {}; db.forEach(r => { if (r['場館'] && r['城市']) pairs[r['場館']] = r['城市']; if (r['場館']) counts[r['場館']] = (counts[r['場館']] || 0) + 1; }); return wait({values, pairs, counts}); },
@@ -268,6 +274,7 @@ const store = {
 const ALL = SECTIONS.flatMap(s => s.fields);
 const DATA = ALL.filter(f => f.t !== 'head');
 const PHOTO_FIELDS = DATA.filter(f => f.t === 'photos');
+const FILE_FIELDS = DATA.filter(f => f.t === 'files');
 const splitIds = v => String(v || '').split(',').filter(Boolean);
 
 /* ============ 輸入建議（統一名稱） ============ */
@@ -329,6 +336,7 @@ function attachSugg(input, k, other){
 }
 
 /* ============ 填寫表單 ============ */
+let fileSets = {};   // fileSets[附件欄位序號] = [{id?, n, size?, b64?}]
 let step = 0, editId = null, photoSets = {};   // photoSets[照片欄位序號] = [{id?, url, b64?}]
 
 function buildForm(){
@@ -357,6 +365,8 @@ function fieldHtml(f){
   else if (f.t === 'stars') ctl = `<div class="stars" id="${id}">${[1,2,3,4,5].map(n => `<button type="button" data-v="${n}">★</button>`).join('')}</div>`;
   else if (f.t === 'photos') { const pi = PHOTO_FIELDS.indexOf(f);
     ctl = `<label class="addphoto">＋ ${esc(f.btn || '加照片')}<input type="file" accept="image/*"${f.max === 1 ? '' : ' multiple'} onchange="addPhotos(this,${pi})"></label><div class="photos" id="ph_${pi}"></div>`; }
+  else if (f.t === 'files') { const fi = FILE_FIELDS.indexOf(f);
+    ctl = `<label class="addphoto">＋ 加檔案<input type="file" multiple onchange="addFiles(this,${fi})"></label><div class="filelist" id="fl_${fi}"></div>`; }
   return `<div class="f${f.half ? ' half' : ''}" data-k="${esc(f.k)}">${lab}${ctl}${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
 }
 function onFormClick(e){
@@ -403,7 +413,7 @@ function getData(){
   const d = {};
   ALL.forEach((f, i) => {
     const el = $('f_' + i);
-    if (f.t === 'photos' || f.t === 'head') return;
+    if (f.t === 'photos' || f.t === 'files' || f.t === 'head') return;
     if (f.t === 'chips' || f.t === 'multi') d[f.k] = chipsValue(el);
     else if (f.t === 'stars') d[f.k] = el.dataset.val || '';
     else d[f.k] = el.value.trim();
@@ -413,7 +423,7 @@ function getData(){
 function setData(d){
   ALL.forEach((f, i) => {
     const el = $('f_' + i), v = d[f.k] || '';
-    if (f.t === 'photos' || f.t === 'head') return;
+    if (f.t === 'photos' || f.t === 'files' || f.t === 'head') return;
     if (f.t === 'chips' || f.t === 'multi') setChips(el, v);
     else if (f.t === 'stars') setStars(el, v);
     else el.value = v;
@@ -463,6 +473,14 @@ async function submit(){
       }
       if (f.k === '照片') ids = got; else d[f.k] = got.join(',');
     }
+    for (const [fi, f] of FILE_FIELDS.entries()) {
+      const got = [];
+      for (const x of fileSets[fi] || []) {
+        if (!x.id) { btn.textContent = `上傳 ${x.n}…`; x.id = await call('uploadFile', x.b64, x.n); delete x.b64; }
+        got.push({id: x.id, n: x.n});
+      }
+      d[f.k] = got.length ? JSON.stringify(got) : '';
+    }
     btn.textContent = '儲存中…';
     store.set('who', d['填寫人']);
     const id = editId ? await call('updateRecord', code(), editId, d, ids) : await call('submitRecord', d, ids);
@@ -479,7 +497,7 @@ async function submit(){
   finally { btn.disabled = false; if ($('done').classList.contains('hide')) showStep(); }
 }
 function clearForm(){
-  editId = null; photoSets = {}; renderPhotos();
+  editId = null; photoSets = {}; renderPhotos(); fileSets = {}; renderFiles();
   setData({'填寫人': store.get('who') || ''});
   document.querySelectorAll('.f.bad').forEach(x => x.classList.remove('bad'));
   store.set('draft', null);
@@ -516,6 +534,38 @@ function shrink(file){
 function renderPhotos(pi){
   if (pi == null) return PHOTO_FIELDS.forEach((_, i) => renderPhotos(i));
   $('ph_' + pi).innerHTML = (photoSets[pi] || []).map((p, i) => `<div>${p.url ? `<img src="${p.url}" onclick="zoom(this.src)" alt="">` : ''}<b onclick="photoSets[${pi}].splice(${i},1);renderPhotos(${pi})">×</b></div>`).join('');
+}
+
+/* 附加檔案：直接上傳（每個 30 MB 內），太大的請貼連結 */
+const BLOCKED = /\.(exe|msi|bat|cmd|com|scr|ps1|sh|app|dmg|pkg|apk|js|vbs|jar|html?|svg)$/i;
+const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+function parseFiles(v){ try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+async function addFiles(input, fi){
+  const f = FILE_FIELDS[fi], list = fileSets[fi] = fileSets[fi] || [];
+  for (const file of input.files) {
+    if (list.length >= f.max) { toast(`最多 ${f.max} 個檔案`); break; }
+    if (BLOCKED.test(file.name)) { toast('這種檔案類型不能上傳：' + file.name); continue; }
+    if (file.size > f.maxMB * 1048576) { toast(`${file.name} 超過 ${f.maxMB} MB，請改貼雲端連結`); continue; }
+    try {
+      const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(file); });
+      list.push({n: file.name, size: file.size, b64});
+    } catch (e) { toast('讀不了這個檔案：' + file.name); }
+  }
+  input.value = ''; renderFiles(fi);
+}
+function renderFiles(fi){
+  if (fi == null) return FILE_FIELDS.forEach((_, i) => renderFiles(i));
+  $('fl_' + fi).innerHTML = (fileSets[fi] || []).map((x, i) => `<div><span>${esc(x.n)}${x.size ? `<small>${fmtSize(x.size)}</small>` : ''}</span><b onclick="fileSets[${fi}].splice(${i},1);renderFiles(${fi})">×</b></div>`).join('');
+}
+async function downloadFile(id){
+  showSheet('<p class="muted">正在取得檔案…</p>');
+  try {
+    const f = await call('getFile', code(), id);
+    const bytes = Uint8Array.from(atob(f.b64), c => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes]));
+    showSheet(`<h2 style="margin-top:0">檔案準備好了</h2><p class="muted">${esc(f.name)}</p>
+      <a class="btn pri" style="display:block;text-align:center;text-decoration:none" href="${url}" download="${esc(f.name)}">下載</a>`);
+  } catch (e) { showSheet(`<p class="msg">${esc(e.message)}</p>`); }
 }
 
 /* ============ 輸出 PDF ============ */
@@ -557,7 +607,7 @@ function showSheet(inner){
 function reportHtml(r, groups){
   const logo = document.querySelector('.brand .l-dark').src;
   const secs = SECTIONS.map(s => {
-    const rows = s.fields.filter(f => f.t !== 'photos' && f.t !== 'head' && r[f.k]).map(f =>
+    const rows = s.fields.filter(f => f.t !== 'photos' && f.t !== 'files' && f.t !== 'head' && r[f.k]).map(f =>
       `<tr><td class="k">${esc(f.label || f.k)}</td><td class="v">${f.t === 'stars' ? '★'.repeat(+r[f.k]) + '☆'.repeat(5 - r[f.k]) : esc(r[f.k])}</td></tr>`).join('');
     return rows ? `<h2>${esc(s.title)}</h2><table>${rows}</table>` : '';
   }).join('');
@@ -568,6 +618,7 @@ function reportHtml(r, groups){
     }
     return `<h2>${esc(g.title)}</h2><table class="ph">${rows}</table>`;
   }).join('');
+  const att = FILE_FIELDS.map(f => { const fs = parseFiles(r[f.k]); return fs.length ? `<h2>${esc(f.k)}</h2><table>${fs.map(x => `<tr><td class="v">${esc(x.n)}</td></tr>`).join('')}</table>` : ''; }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(r['場館'])}</title><style>
     body{font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#151515;font-size:11pt;margin:24px}
     .top{border-bottom:2px solid #151515;padding-bottom:8px}
@@ -585,6 +636,7 @@ function reportHtml(r, groups){
     <p class="meta">${esc(r['城市'])} · ${esc(r['演出日期'])} · ${esc(r['藝人／專案'])}</p>
     ${secs}
     ${ph}
+    ${att}
     <p class="foot">編號 ${esc(r.ID || '')}　填寫人 ${esc(r['填寫人'])}${r['最後修改時間'] ? '　最後修改 ' + esc(r['最後修改時間']) : ''}</p>
   </body></html>`;
 }
@@ -662,7 +714,7 @@ async function openRecord(id){
   try { current = await call('getRecord', code(), id); } catch (e) { return kick(e.message); }
   const r = current;
   const secs = SECTIONS.map(s => {
-    const rows = s.fields.filter(f => f.t !== 'photos' && f.t !== 'head' && r[f.k]).map(f =>
+    const rows = s.fields.filter(f => f.t !== 'photos' && f.t !== 'files' && f.t !== 'head' && r[f.k]).map(f =>
       `<dt>${esc(f.k)}</dt><dd>${f.t === 'stars' ? '★'.repeat(+r[f.k]) + '☆'.repeat(5 - r[f.k]) : esc(r[f.k])}</dd>`).join('');
     return rows ? `<div class="card sec"><h3>${esc(s.title)}</h3><dl>${rows}</dl></div>` : '';
   }).join('');
@@ -671,6 +723,7 @@ async function openRecord(id){
     <p class="muted" style="margin:0 0 14px">${esc(r['城市'])} · ${esc(r['演出日期'])} · ${esc(r['藝人／專案'])}</p>
     ${secs}
     ${PHOTO_FIELDS.map(f => { const ids = splitIds(r[f.k]); return ids.length ? `<div class="card sec"><h3>${esc(f.label || f.k)}</h3><div class="photos">${ids.map(p => `<div data-p="${esc(p)}"></div>`).join('')}</div></div>` : ''; }).join('')}
+    ${FILE_FIELDS.map(f => { const fs = parseFiles(r[f.k]); return fs.length ? `<div class="card sec"><h3>${esc(f.k)}</h3><div class="filelist">${fs.map(x => `<div><span>${esc(x.n)}</span><b onclick="downloadFile('${esc(x.id)}')">下載</b></div>`).join('')}</div></div>` : ''; }).join('')}
     <p class="muted" style="font-size:12px">編號 ${esc(r.ID)} · 建立 ${esc(r['建立時間'])} · 最後修改 ${esc(r['最後修改時間'])}（${esc(r['最後修改人'])}）</p>
     <div style="display:flex;gap:10px">
       <button class="btn" onclick="exportPdf(current)">輸出 PDF</button>
@@ -706,6 +759,8 @@ function startEdit(){
   photoSets = {};
   PHOTO_FIELDS.forEach((f, pi) => photoSets[pi] = splitIds(r[f.k]).map(id => ({id, url: photoCache[id] || ''})));
   renderPhotos();
+  fileSets = {}; FILE_FIELDS.forEach((f, fi) => fileSets[fi] = parseFiles(r[f.k]));
+  renderFiles();
   $('editId').textContent = r['場館'] + '（' + r.ID + '）';
   $('editBanner').classList.remove('hide'); $('draftBanner').classList.add('hide'); $('done').classList.add('hide');
   step = 0; showTab('form');
